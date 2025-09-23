@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - GridSystem{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto mt-10 p-6 bg-white rounded-2xl shadow-lg">
+
+    <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">GridSystem Trading Dashboard</h1>
+    <p class="text-gray-600 mb-6 text-center">Control your trading bot and monitor live positions & pending orders.</p>
+
+    <!-- Trading Controls -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <!-- Start Trading -->
+        <form action="/start-trading" method="post">
+            <button 
+                class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold shadow-lg 
+                       {% if trading_active %} opacity-50 cursor-not-allowed {% endif %}" 
+                {% if trading_active %} disabled {% endif %}>
+                Start Trading
+            </button>
+        </form>
+
+        <!-- Stop Trading -->
+        <form action="/stop-trading" method="post">
+            <button 
+                class="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-xl font-semibold shadow-lg
+                       {% if not trading_active %} opacity-50 cursor-not-allowed {% endif %}" 
+                {% if not trading_active %} disabled {% endif %}>
+                Stop Trading
+            </button>
+        </form>
+
+        <!-- Panic Close All -->
+        <form action="/panic-close" method="post">
+            <button 
+                class="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-semibold shadow-lg
+                       {% if trading_active %} opacity-50 cursor-not-allowed {% endif %}" 
+                {% if trading_active %} disabled {% endif %}>
+                Panic Close All
+            </button>
+        </form>
+
+        <!-- Cancel All Orders -->
+        <form action="/cancel-all" method="post">
+            <button 
+                class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-xl font-semibold shadow-lg
+                       {% if trading_active %} opacity-50 cursor-not-allowed {% endif %}" 
+                {% if trading_active %} disabled {% endif %}>
+                Cancel All Orders
+            </button>
+        </form>
+    </div>
+
+    <!-- Status Message -->
+    {% if status_message %}
+    <div class="mt-4 p-3 rounded-lg text-white font-semibold
+        {% if status_type == 'success' %} bg-green-500 {% elif status_type == 'error' %} bg-red-500 {% elif status_type == 'info' %} bg-blue-500 {% else %} bg-gray-500 {% endif %}">
+        {{ status_message }}
+    </div>
+    {% endif %}
+
+    <!-- Live Info Cards -->
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Active Positions -->
+        <div class="bg-gray-50 p-4 rounded-xl shadow-md flex flex-col">
+            <h2 class="text-xl font-bold mb-2">Active Positions</h2>
+            <div class="overflow-auto max-h-96">
+                {% if positions %}
+                    <ul>
+                        {% for pos in positions %}
+                        <li class="border-b py-2 flex justify-between items-center">
+                            <span>
+                                {{ pos.symbol }} 
+                                <span class="font-semibold text-sm {{ 'text-green-600' if pos.type == 0 else 'text-red-600' }}">
+                                    {{ 'BUY' if pos.type == 0 else 'SELL' }}
+                                </span>
+                            </span>
+                            <span class="text-sm">
+                                Lot: {{ pos.volume }} | Ticket: {{ pos.ticket }} | Profit: {{ pos.profit }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-gray-500">No active positions.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Pending Orders -->
+        <div class="bg-gray-50 p-4 rounded-xl shadow-md flex flex-col">
+            <h2 class="text-xl font-bold mb-2">Pending Orders</h2>
+            <div class="overflow-auto max-h-96">
+                {% if orders %}
+                    <ul>
+                        {% for order in orders %}
+                        <li class="border-b py-2 flex justify-between items-center">
+                            <span>
+                                {{ order.symbol }} 
+                                <span class="font-semibold text-sm 
+                                    {% if order.type in [0,2,4] %} text-green-600 {% else %} text-red-600 {% endif %}">
+                                    {% if order.type == 0 %} BUY 
+                                    {% elif order.type == 1 %} SELL 
+                                    {% elif order.type == 2 %} BUY LIMIT 
+                                    {% elif order.type == 3 %} SELL LIMIT
+                                    {% elif order.type == 4 %} BUY STOP 
+                                    {% elif order.type == 5 %} SELL STOP
+                                    {% else %} UNKNOWN {% endif %}
+                                </span>
+                            </span>
+                            <span class="text-sm">
+                                Remaining: {{ order.volume }} | Ticket: {{ order.ticket }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-gray-500">No pending orders.</p>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Refresh Info -->
+    <div class="mt-6 text-center">
+        <form action="/" method="get">
+            <button class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-lg font-semibold shadow-md">
+                Refresh Live Data
+            </button>
+        </form>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('mouseenter', () => btn.classList.add('scale-105'));
+        btn.addEventListener('mouseleave', () => btn.classList.remove('scale-105'));
+    });
+</script>
+{% endblock %}

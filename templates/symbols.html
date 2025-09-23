@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="bg-white shadow-xl rounded-2xl p-8">
+        <h2 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center gap-3">
+            <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            Manage Symbols
+        </h2>
+
+        <!-- Add Symbol Form -->
+        <form id="addSymbolForm" action="/symbols" method="POST" class="mb-8 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4 bg-gray-50 p-6 rounded-xl border border-gray-200 relative">
+
+            <!-- Symbol Dropdown -->
+            <div class="relative">
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Symbol</label>
+                <input id="symbolInput" type="text" name="new_symbol" placeholder="Search symbol..." 
+                       class="border-gray-300 rounded-lg p-2 w-full focus:ring-2 focus:ring-green-400 focus:outline-none" autocomplete="off" required>
+
+                <div id="symbolDropdown" class="absolute left-0 right-0 bg-white border border-gray-300 rounded max-h-40 overflow-y-auto z-50 mt-1 shadow-lg hidden">
+                    {% for sym in broker_symbols %}
+                        <div class="px-2 py-1 hover:bg-gray-200 cursor-pointer">{{ sym }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Other Inputs -->
+            <div><label class="block text-sm font-semibold mb-1">Lot Size</label><input type="number" name="lot_size" step="0.01" min="0.01" value="0.1" class="border rounded p-2 w-full" required></div>
+            <div><label class="block text-sm font-semibold mb-1">Brick Size</label><input type="number" name="brick_size" step="0.00001" min="0.00001" value="0.0001" class="border rounded p-2 w-full" required></div>
+            <div><label class="block text-sm font-semibold mb-1">Max Up</label><input type="number" name="max_up" min="1" value="5" class="border rounded p-2 w-full" required></div>
+            <div><label class="block text-sm font-semibold mb-1">Max Down</label><input type="number" name="max_down" min="1" value="5" class="border rounded p-2 w-full" required></div>
+            <div><label class="block text-sm font-semibold mb-1">Trade Side</label>
+                <select name="trade_side" class="border rounded p-2 w-full">
+                    <option value="both" selected>Both</option>
+                    <option value="buy">Only Buy</option>
+                    <option value="sell">Only Sell</option>
+                </select>
+            </div>
+            <div><label class="block text-sm font-semibold mb-1">Grid Rounding</label>
+                <select name="grid_rounding" class="border rounded p-2 w-full">
+                    <option value="nearest" selected>Nearest</option>
+                    <option value="up">Up</option>
+                    <option value="down">Down</option>
+                </select>
+            </div>
+            <div><label class="block text-sm font-semibold mb-1">Stop Loss (pips)</label><input type="number" name="stop_loss_pips" step="0.0001" class="border rounded p-2 w-full"></div>
+            <div><label class="block text-sm font-semibold mb-1">Take Profit (pips)</label><input type="number" name="take_profit_pips" step="0.0001" value="0.0001" class="border rounded p-2 w-full"></div>
+            <div><label class="block text-sm font-semibold mb-1">Initial Buy Levels</label><input type="number" name="initial_levels_buy" value="3" class="border rounded p-2 w-full"></div>
+            <div><label class="block text-sm font-semibold mb-1">Initial Sell Levels</label><input type="number" name="initial_levels_sell" value="3" class="border rounded p-2 w-full"></div>
+            <div class="flex items-end">
+                <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full">➕ Add Symbol</button>
+            </div>
+        </form>
+
+        <!-- Existing Symbols Table -->
+        <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+            <table class="w-full border-collapse text-sm">
+                <thead>
+                    <tr class="bg-green-100 text-green-900">
+                        <th class="border px-4 py-3 text-left">Symbol</th>
+                        <th class="border px-4 py-3">Lot</th>
+                        <th class="border px-4 py-3">Brick</th>
+                        <th class="border px-4 py-3">Max Up</th>
+                        <th class="border px-4 py-3">Max Down</th>
+                        <th class="border px-4 py-3">Trade Side</th>
+                        <th class="border px-4 py-3">Grid</th>
+                        <th class="border px-4 py-3">SL</th>
+                        <th class="border px-4 py-3">TP</th>
+                        <th class="border px-4 py-3">Init Buy</th>
+                        <th class="border px-4 py-3">Init Sell</th>
+                        <th class="border px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sym in symbols %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="border px-4 py-3 font-bold">{{ sym.name }}</td>
+                        <td class="border px-4 py-3">{{ sym.lot_size }}</td>
+                        <td class="border px-4 py-3">{{ sym.brick_size }}</td>
+                        <td class="border px-4 py-3">{{ sym.max_up }}</td>
+                        <td class="border px-4 py-3">{{ sym.max_down }}</td>
+                        <td class="border px-4 py-3">{{ sym.trade_side }}</td>
+                        <td class="border px-4 py-3">{{ sym.grid_rounding }}</td>
+                        <td class="border px-4 py-3">{{ sym.stop_loss_pips or "—" }}</td>
+                        <td class="border px-4 py-3">{{ sym.take_profit_pips }}</td>
+                        <td class="border px-4 py-3">{{ sym.initial_levels_buy }}</td>
+                        <td class="border px-4 py-3">{{ sym.initial_levels_sell }}</td>
+                        <td class="border px-4 py-3 text-center">
+                            <form action="/symbols" method="POST">
+                                <input type="hidden" name="remove_symbol" value="{{ sym.name }}">
+                                <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs">❌ Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="12" class="text-center py-6 text-gray-500">No symbols added yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- JS for Dropdown -->
+<script>
+const input = document.getElementById('symbolInput');
+const dropdown = document.getElementById('symbolDropdown');
+const items = dropdown.querySelectorAll('div');
+
+// Show dropdown on focus
+input.addEventListener('focus', () => dropdown.classList.remove('hidden'));
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+    if (!dropdown.contains(e.target) && e.target !== input) {
+        dropdown.classList.add('hidden');
+    }
+});
+
+// Filter dropdown while typing
+input.addEventListener('input', () => {
+    const val = input.value.toLowerCase();
+    let hasMatch = false;
+    items.forEach(item => {
+        const match = item.textContent.toLowerCase().includes(val);
+        item.style.display = match ? 'block' : 'none';
+        if(match) hasMatch = true;
+    });
+    dropdown.classList.toggle('hidden', !hasMatch);
+});
+
+// Select a symbol
+items.forEach(item => {
+    item.addEventListener('mousedown', e => {
+        e.preventDefault(); // prevent blur
+        input.value = item.textContent;
+        dropdown.classList.add('hidden');
+    });
+});
+</script>
+{% endblock %}

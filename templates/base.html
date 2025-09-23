@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GridSystem Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gray-800 text-white p-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold">GridSystem Bot</h1>
+        <nav class="flex gap-4">
+            <a href="/" class="hover:underline">Dashboard</a>
+            <a href="/account" class="hover:underline">Account</a>
+            <a href="/symbols" class="hover:underline">Symbols</a>
+            <a href="/active-trades" class="hover:underline">Active Trades</a>
+            <a href="/pending-orders" class="hover:underline">Pending Orders</a>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white text-center p-4 mt-6">
+        &copy; 2025 GridSystem Bot. All rights reserved.
+    </footer>
+
+</body>
+</html>

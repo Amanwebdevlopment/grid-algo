@@ -1,0 +1,23 @@
+{
+    "account": 988967,
+    "password": "Demo@123",
+    "server": "EquitiBrokerageSC-Demo",
+    "loop_delay": 1,
+    "closed_level_block_seconds": 300,
+    "grid_tolerance": 0.0,
+    "symbols": {
+        "XAUUSD.pr": {
+            "lot_size": 0.1,
+            "brick_size": 0.5,
+            "max_up": 1,
+            "max_down": 1,
+            "trade_side": "both",
+            "grid_rounding": "nearest",
+            "stop_loss_pips": null,
+            "take_profit_pips": 0.5,
+            "initial_levels_buy": 1,
+            "initial_levels_sell": 1,
+            "active": true
+        }
+    }
+}

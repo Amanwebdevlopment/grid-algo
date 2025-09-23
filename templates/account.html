@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto mt-6">
+    <h2 class="text-2xl font-bold mb-4">Account Management</h2>
+
+    <!-- Display Success/Error Message -->
+    {% if message %}
+        <div class="mb-4 px-4 py-2 rounded
+            {% if 'error' in message|lower %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
+            {{ message }}
+        </div>
+    {% endif %}
+
+    <!-- Current Account Info -->
+    <div class="bg-white shadow rounded p-4 mb-6">
+        <h3 class="text-xl font-semibold mb-2">Current Account</h3>
+        {% if account %}
+        <table class="min-w-full table-auto border border-gray-200">
+            <tbody>
+                <tr class="border-b">
+                    <td class="font-semibold px-2 py-1">Account Number</td>
+                    <td class="px-2 py-1">{{ account.account }}</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="font-semibold px-2 py-1">Balance</td>
+                    <td class="px-2 py-1">{{ account.balance }}</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="font-semibold px-2 py-1">Equity</td>
+                    <td class="px-2 py-1">{{ account.equity }}</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="font-semibold px-2 py-1">Margin</td>
+                    <td class="px-2 py-1">{{ account.margin }}</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="font-semibold px-2 py-1">Leverage</td>
+                    <td class="px-2 py-1">{{ account.leverage }}</td>
+                </tr>
+                <tr>
+                    <td class="font-semibold px-2 py-1">Server</td>
+                    <td class="px-2 py-1">{{ account.server }}</td>
+                </tr>
+            </tbody>
+        </table>
+        {% else %}
+            <p class="text-red-500 font-medium">MT5 is not connected or account info not available.</p>
+        {% endif %}
+    </div>
+
+    <!-- Update Account Form -->
+    <div class="bg-white shadow rounded p-4 mb-6">
+        <h3 class="text-xl font-semibold mb-2">Switch / Update Account</h3>
+        <form action="/account" method="post" class="flex flex-col gap-2 max-w-md">
+            <input type="text" name="account" placeholder="Account Number" 
+                   class="border px-2 py-1 rounded" 
+                   value="{{ config.account if config.account else '' }}" required>
+            <input type="password" name="password" placeholder="Password" 
+                   class="border px-2 py-1 rounded" 
+                   value="{{ config.password if config.password else '' }}" required>
+            <input type="text" name="server" placeholder="Server Name" 
+                   class="border px-2 py-1 rounded" 
+                   value="{{ config.server if config.server else '' }}" required>
+            <button type="submit" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded">
+                Update Account
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

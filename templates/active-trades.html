@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto mt-6">
+    <h2 class="text-2xl font-bold mb-4">Active Trades / Symbols</h2>
+
+    <!-- Filter Dropdown -->
+    <form method="GET" action="/active-trades" class="mb-4 flex gap-2 items-center">
+        <label class="font-medium">Filter by Symbol:</label>
+        <select name="symbol" class="border rounded px-2 py-1">
+            <option value="">All</option>
+            {% for s in symbols %}
+                <option value="{{ s }}" {% if selected_symbol == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">Filter</button>
+    </form>
+
+    {% if trades %}
+        <div class="overflow-x-auto">
+            <table class="w-full table-auto border-collapse shadow rounded">
+                <thead class="bg-gray-200">
+                    <tr>
+                        <th class="border px-4 py-2">Symbol</th>
+                        <th class="border px-4 py-2">Type</th>
+                        <th class="border px-4 py-2">Lot</th>
+                        <th class="border px-4 py-2">Price Open</th>
+                        <th class="border px-4 py-2">Current Price</th>
+                        <th class="border px-4 py-2">Profit / Loss</th>
+                        <th class="border px-4 py-2">Ticket</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in trades %}
+                    <tr class="hover:bg-gray-100">
+                        <td class="border px-4 py-2 font-semibold">{{ p.symbol }}</td>
+                        <td class="border px-4 py-2 text-center">
+                            {% if p.type == "Buy" %}
+                                <span class="text-green-600 font-bold">BUY</span>
+                            {% elif p.type == "Sell" %}
+                                <span class="text-red-600 font-bold">SELL</span>
+                            {% else %}
+                                <span class="text-gray-600">UNKNOWN</span>
+                            {% endif %}
+                        </td>
+                        <td class="border px-4 py-2 text-center">{{ p.volume }}</td>
+                        <td class="border px-4 py-2 text-center">{{ p.price_open }}</td>
+                        <td class="border px-4 py-2 text-center">{{ p.price_current }}</td>
+                        <td class="border px-4 py-2 text-center font-semibold
+                            {% if p.profit >= 0 %} text-green-600 {% else %} text-red-600 {% endif %}">
+                            {{ p.profit }}
+                        </td>
+                        <td class="border px-4 py-2 text-center">{{ p.ticket }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mt-4" role="alert">
+            <p><strong>No active trades found.</strong></p>
+            {% if reason %}
+                <p>Reason: {{ reason }}</p>
+            {% else %}
+                <p>Either there are no open positions, or MT5 terminal is not running / not logged in.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
