@@ -1,6 +1,6 @@
 {
-    "account": 96855921,
-    "password": "S!6wWmMr",
+    "account": 96861621,
+    "password": "!6EyTkJn",
     "server": "MetaQuotes-Demo",
     "loop_delay": 1,
     "closed_level_block_seconds": 300,
@@ -8,28 +8,15 @@
     "symbols": {
         "XAUUSD": {
             "lot_size": 0.1,
-            "brick_size": 0.5,
-            "max_up": 5,
-            "max_down": 5,
-            "trade_side": "buy",
-            "grid_rounding": "nearest",
-            "stop_loss_pips": null,
-            "take_profit_pips": 0.5,
-            "initial_levels_buy": 3,
-            "initial_levels_sell": 3,
-            "active": false
-        },
-        "EURUSD": {
-            "lot_size": 0.1,
-            "brick_size": 0.001,
+            "brick_size": 5.0,
             "max_up": 5,
             "max_down": 5,
             "trade_side": "both",
             "grid_rounding": "nearest",
-            "stop_loss_pips": null,
-            "take_profit_pips": 0.001,
-            "initial_levels_buy": 3,
-            "initial_levels_sell": 3,
+            "stop_loss_pips": 5.0,
+            "take_profit_pips": 5.0,
+            "initial_levels_buy": 0,
+            "initial_levels_sell": 0,
             "active": true
         }
     }

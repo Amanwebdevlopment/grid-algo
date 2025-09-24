@@ -1,7 +1,8 @@
-# active_trades.py
-from flask import Blueprint, render_template, request
+# routes/active_routes.py
+from flask import Blueprint, render_template, request, jsonify
 import MetaTrader5 as mt5
 
+# ---------------- Define Blueprint ----------------
 active_bp = Blueprint("active", __name__)
 
 # ---------------- MT5 Initialization ----------------
@@ -11,13 +12,13 @@ def initialize_mt5():
         return False
     account_info = mt5.account_info()
     if account_info:
-        print(f"[DEBUG] MT5 initialized successfully. Logged in as account {account_info.login}")
+        print(f"[INFO] MT5 connected successfully. Logged in as account {account_info.login}")
         return True
     else:
         print("[DEBUG] MT5 initialized but account info not available!")
         return False
 
-# Initialize once at startup
+# Initialize MT5 at startup
 initialize_mt5()
 
 # ---------------- Helper: Get current price ----------------
@@ -25,17 +26,17 @@ def get_current_price(symbol, order_type):
     tick = mt5.symbol_info_tick(symbol)
     if not tick:
         return None
-    # For Buy positions, current price = bid; for Sell positions, current price = ask
+    # Buy = bid, Sell = ask
     return tick.bid if order_type == mt5.ORDER_TYPE_BUY else tick.ask
 
-# ---------------- Route: Active Trades ----------------
+# ---------------- Route: Active Trades HTML ----------------
 @active_bp.route("/active-trades", methods=["GET"])
 def active_trades():
     reason = None
 
-    # Ensure MT5 is initialized
+    # Ensure MT5 initialized
     if not mt5.initialize():
-        print("[DEBUG] MT5 not initialized in route, attempting to re-initialize...")
+        print("[DEBUG] MT5 not initialized in route, attempting re-init...")
         if not initialize_mt5():
             reason = "MT5 not initialized. Start your terminal or check login."
             return render_template(
@@ -56,7 +57,7 @@ def active_trades():
     else:
         for p in positions:
             price_current = get_current_price(p.symbol, p.type) or p.price_open
-            trade_info = {
+            trades.append({
                 "symbol": p.symbol,
                 "type": "Buy" if p.type == mt5.ORDER_TYPE_BUY else "Sell",
                 "volume": p.volume,
@@ -64,8 +65,7 @@ def active_trades():
                 "price_current": price_current,
                 "profit": p.profit,
                 "ticket": p.ticket
-            }
-            trades.append(trade_info)
+            })
 
     # ---------------- Symbol Filter ----------------
     all_symbols = sorted(set(t["symbol"] for t in trades))
@@ -73,6 +73,7 @@ def active_trades():
     if selected_symbol:
         trades = [t for t in trades if t["symbol"].upper() == selected_symbol.upper()]
 
+    # Always return a template
     return render_template(
         "active-trades.html",
         trades=trades,
@@ -80,3 +81,37 @@ def active_trades():
         selected_symbol=selected_symbol,
         reason=reason
     )
+
+# ---------------- Route: API for live trades ----------------
+@active_bp.route("/api/trades", methods=["GET"])
+def api_trades():
+    reason = None
+
+    # Ensure MT5 initialized
+    if not mt5.initialize():
+        print("[DEBUG] MT5 not initialized in API, attempting re-init...")
+        if not initialize_mt5():
+            return {"trades": [], "reason": "MT5 not initialized."}, 500
+
+    positions = mt5.positions_get()
+    trades = []
+
+    if positions:
+        for p in positions:
+            price_current = get_current_price(p.symbol, p.type) or p.price_open
+            trades.append({
+                "symbol": p.symbol,
+                "type": "Buy" if p.type == mt5.ORDER_TYPE_BUY else "Sell",
+                "volume": p.volume,
+                "price_open": p.price_open,
+                "price_current": price_current,
+                "profit": p.profit,
+                "ticket": p.ticket
+            })
+
+    # ---------------- Symbol Filter ----------------
+    selected_symbol = request.args.get("symbol")
+    if selected_symbol:
+        trades = [t for t in trades if t["symbol"].upper() == selected_symbol.upper()]
+
+    return {"trades": trades, "reason": reason}, 200

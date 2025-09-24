@@ -12,10 +12,9 @@ def load_config():
             return json.load(f)
     except FileNotFoundError:
         return {
-            "account": 10007658661,
-            "password": "Yn*iGn6e",
+            "account": 96861621,
+            "password": "!6EyTkJn",
             "server": "MetaQuotes-Demo",
-            "global_stop_loss": 50,
             "loop_delay": 1,
             "closed_level_block_seconds": 300,
             "grid_tolerance": 0.0,
@@ -43,36 +42,44 @@ def symbols():
         # Fetch form data
         new_symbol = request.form.get("new_symbol", "").strip()  # keep broker exact, no .upper()
         remove_symbol = request.form.get("remove_symbol")
-        selected_symbol = request.form.get("active_symbol")
 
         # ---------------- Remove Symbol ----------------
         if remove_symbol and remove_symbol in config["symbols"]:
             config["symbols"].pop(remove_symbol)
-            if selected_symbol == remove_symbol:
-                selected_symbol = None
 
         # ---------------- Add / Update Symbol ----------------
         if new_symbol:
-            # Optional: validate symbol against broker list
             broker_symbols = fetch_broker_symbols()
             if new_symbol not in broker_symbols:
                 flash(f"Symbol '{new_symbol}' not found in broker Market Watch", "error")
                 return redirect("/symbols")
 
             lot_size = float(request.form.get("lot_size", 0.1))
-            brick_size = float(request.form.get("brick_size", 0.0001))
-            max_up = int(request.form.get("max_up", 5))
-            max_down = int(request.form.get("max_down", 5))
+            brick_size = float(request.form.get("brick_size", 1))       # ✅ default 1
+            max_up = int(request.form.get("max_up", 2))                 # ✅ default 2
+            max_down = int(request.form.get("max_down", 2))             # ✅ default 2
             trade_side = request.form.get("trade_side", "both")
             grid_rounding = request.form.get("grid_rounding", "nearest")
+
             stop_loss_pips = request.form.get("stop_loss_pips")
-            take_profit_pips = request.form.get("take_profit_pips")
             stop_loss_pips = float(stop_loss_pips) if stop_loss_pips else None
-            take_profit_pips = float(take_profit_pips) if take_profit_pips else None
-            initial_levels_buy = int(request.form.get("initial_levels_buy", 3))
-            initial_levels_sell = int(request.form.get("initial_levels_sell", 3))
+
+            take_profit_pips = request.form.get("take_profit_pips")
+            if take_profit_pips is not None and take_profit_pips.strip() != "":
+                take_profit_pips = float(take_profit_pips)
+                if take_profit_pips == 0:
+                    take_profit_pips = None
+            else:
+                take_profit_pips = None
+
+            initial_levels_buy = int(request.form.get("initial_levels_buy", 0))   # ✅ default 0
+            initial_levels_sell = int(request.form.get("initial_levels_sell", 0)) # ✅ default 0
 
             config.setdefault("symbols", {})
+
+            # 🔥 Agar symbol pehle se exist karta hai to uska active status preserve karein
+            prev_active = config["symbols"].get(new_symbol, {}).get("active", False)
+
             config["symbols"][new_symbol] = {
                 "lot_size": lot_size,
                 "brick_size": brick_size,
@@ -84,14 +91,10 @@ def symbols():
                 "take_profit_pips": take_profit_pips,
                 "initial_levels_buy": initial_levels_buy,
                 "initial_levels_sell": initial_levels_sell,
-                "active": True
+                # ✅ New symbol → Active by default
+                # ✅ Existing symbol → preserve old active state
+                "active": True if new_symbol not in config["symbols"] else prev_active
             }
-            selected_symbol = new_symbol
-
-        # ---------------- Activate Selected Symbol Only ----------------
-        if selected_symbol:
-            for sym in config["symbols"]:
-                config["symbols"][sym]["active"] = (sym == selected_symbol)
 
         save_config(config)
         return redirect("/symbols")

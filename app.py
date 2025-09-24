@@ -6,6 +6,7 @@ from routes.order_routes import order_bp
 from routes.active_routes import active_bp 
 import os
 app = Flask(__name__)
+
 app.secret_key = os.environ.get("SECRET_KEY", "my_super_secret_key")
 app.register_blueprint(main_bp)
 app.register_blueprint(account_bp)

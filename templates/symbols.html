@@ -39,17 +39,9 @@
                     <option value="sell">Only Sell</option>
                 </select>
             </div>
-            <div><label class="block text-sm font-semibold mb-1">Grid Rounding</label>
-                <select name="grid_rounding" class="border rounded p-2 w-full">
-                    <option value="nearest" selected>Nearest</option>
-                    <option value="up">Up</option>
-                    <option value="down">Down</option>
-                </select>
-            </div>
             <div><label class="block text-sm font-semibold mb-1">Stop Loss (pips)</label><input type="number" name="stop_loss_pips" step="0.0001" class="border rounded p-2 w-full"></div>
             <div><label class="block text-sm font-semibold mb-1">Take Profit (pips)</label><input type="number" name="take_profit_pips" step="0.0001" value="0.0001" class="border rounded p-2 w-full"></div>
-            <div><label class="block text-sm font-semibold mb-1">Initial Buy Levels</label><input type="number" name="initial_levels_buy" value="3" class="border rounded p-2 w-full"></div>
-            <div><label class="block text-sm font-semibold mb-1">Initial Sell Levels</label><input type="number" name="initial_levels_sell" value="3" class="border rounded p-2 w-full"></div>
+            
             <div class="flex items-end">
                 <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full">➕ Add Symbol</button>
             </div>
@@ -66,11 +58,8 @@
                         <th class="border px-4 py-3">Max Up</th>
                         <th class="border px-4 py-3">Max Down</th>
                         <th class="border px-4 py-3">Trade Side</th>
-                        <th class="border px-4 py-3">Grid</th>
                         <th class="border px-4 py-3">SL</th>
                         <th class="border px-4 py-3">TP</th>
-                        <th class="border px-4 py-3">Init Buy</th>
-                        <th class="border px-4 py-3">Init Sell</th>
                         <th class="border px-4 py-3 text-center">Actions</th>
                     </tr>
                 </thead>
@@ -83,11 +72,8 @@
                         <td class="border px-4 py-3">{{ sym.max_up }}</td>
                         <td class="border px-4 py-3">{{ sym.max_down }}</td>
                         <td class="border px-4 py-3">{{ sym.trade_side }}</td>
-                        <td class="border px-4 py-3">{{ sym.grid_rounding }}</td>
                         <td class="border px-4 py-3">{{ sym.stop_loss_pips or "—" }}</td>
                         <td class="border px-4 py-3">{{ sym.take_profit_pips }}</td>
-                        <td class="border px-4 py-3">{{ sym.initial_levels_buy }}</td>
-                        <td class="border px-4 py-3">{{ sym.initial_levels_sell }}</td>
                         <td class="border px-4 py-3 text-center">
                             <form action="/symbols" method="POST">
                                 <input type="hidden" name="remove_symbol" value="{{ sym.name }}">
@@ -97,7 +83,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="12" class="text-center py-6 text-gray-500">No symbols added yet.</td>
+                        <td colspan="9" class="text-center py-6 text-gray-500">No symbols added yet.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
