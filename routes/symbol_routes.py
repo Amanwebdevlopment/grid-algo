@@ -88,7 +88,6 @@ def force_close_symbol(symbol: str):
 
     tick = mt5.symbol_info_tick(symbol)
     if not tick:
-        print(f"[WARN] No tick data for {symbol}")
         mt5.shutdown()
         return
 
@@ -139,6 +138,9 @@ def symbols():
             take_profit_pips = float(request.form.get("take_profit_pips")) if request.form.get("take_profit_pips") else None
             trailing_stop_pips = float(request.form.get("trailing_stop_pips")) if request.form.get("trailing_stop_pips") else None
 
+            # ✅ Add farClose field from frontend (default False)
+            far_close = request.form.get("farClose", "false").lower() == "true"
+
             prev_active = config["symbols"].get(new_symbol, {}).get("active", False)
 
             config["symbols"][new_symbol] = {
@@ -150,7 +152,8 @@ def symbols():
                 "stop_loss_pips": stop_loss_pips,
                 "take_profit_pips": take_profit_pips,
                 "trailing_stop_pips": trailing_stop_pips,
-                "active": True if new_symbol not in config["symbols"] else prev_active
+                "active": True if new_symbol not in config["symbols"] else prev_active,
+                "farClose": far_close   # ✅ Added here
             }
 
         save_config(config)

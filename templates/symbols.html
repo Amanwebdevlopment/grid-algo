@@ -83,6 +83,20 @@
                 <input type="number" name="trailing_stop_pips" step="0.0001" value="0.1000" class="border rounded p-2 w-full">
             </div>
 
+            <!-- NEW: Far Close radio (sends farClose=true or farClose=false to backend) -->
+            <div class="col-span-1 sm:col-span-2 lg:col-span-1">
+                <label class="block text-sm font-semibold mb-1">Far Close</label>
+                <div class="mb-2 text-sm">
+                    <label class="inline-flex items-center mr-3">
+                        <input type="radio" name="farClose" value="true" class="mr-2 farclose-radio" checked> Active
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="farClose" value="false" class="mr-2 farclose-radio"> Inactive
+                    </label>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">When Active, backend will run far-close cleaning for this symbol.</p>
+            </div>
+
             <div class="col-span-1 sm:col-span-2 lg:col-span-1 flex items-end">
                 <button id="addUpdateBtn" type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full font-semibold shadow">
                     ➕ Add / Update Symbol
@@ -109,7 +123,8 @@
                 </thead>
                 <tbody>
                     {% for sym in symbols %}
-                    <tr class="hover:bg-gray-50">
+                    <!-- data-farclose added so JS can read current value when editing -->
+                    <tr class="hover:bg-gray-50" data-farclose="{{ 'true' if sym.farClose else 'false' }}">
                         <td class="border px-4 py-3 font-bold">{{ sym.name }}</td>
                         <td class="border px-4 py-3">{{ sym.lot_size }}</td>
                         <td class="border px-4 py-3">{{ "%.4f"|format(sym.brick_size) }}</td>
@@ -206,6 +221,9 @@ const stopLossRadios = document.querySelectorAll('.stoploss-mode');
 const stopLossInput = document.getElementById('stopLossInput'); // VISIBLE - no name
 const stopLossHidden = document.getElementById('stopLossHidden'); // HIDDEN - has name
 
+// --- Elements for FarClose handling ---
+const farCloseRadios = document.querySelectorAll('.farclose-radio');
+
 // Update UI and hidden value based on mode
 function updateStopLossUI() {
     const selected = document.querySelector('input[name="stop_loss_mode"]:checked').value;
@@ -218,9 +236,7 @@ function updateStopLossUI() {
         stopLossInput.readOnly = true;
         stopLossHidden.value = ""; // backend will treat empty as None
     } else { // custom
-        // enable editing
         stopLossInput.readOnly = false;
-        // if hidden already has a >0 value keep it, else clear visible for user
         if(stopLossHidden.value && parseFloat(stopLossHidden.value) > 0) {
             stopLossInput.value = parseFloat(stopLossHidden.value).toFixed(4);
         } else {
@@ -233,7 +249,6 @@ function updateStopLossUI() {
 // when visible custom input changes, update hidden value
 stopLossInput.addEventListener('input', () => {
     const v = stopLossInput.value.trim();
-    // keep hidden synced (will be validated on submit)
     stopLossHidden.value = v;
 });
 
@@ -270,17 +285,18 @@ addForm.addEventListener('submit', (e) => {
             stopLossInput.focus();
             return;
         }
-        // ensure hidden has normalized value
         stopLossHidden.value = parseFloat(v).toFixed(4);
     } else if(mode === 'no_stop') {
-        // send empty so backend saves None
         stopLossHidden.value = "";
     } else { // same_price
         stopLossHidden.value = "0.0";
     }
+
+    // ensure farClose radio exists and sends value ("true" or "false")
+    // nothing extra needed here because radio has name="farClose" and will be submitted
 });
 
-// --- Edit Button (populate form, including hidden) ---
+// --- Edit Button (populate form, including farClose) ---
 document.querySelectorAll(".edit-symbol-btn").forEach(btn => {
     btn.addEventListener('click', () => {
         if(btn.disabled) return;
@@ -313,6 +329,12 @@ document.querySelectorAll(".edit-symbol-btn").forEach(btn => {
 
         document.querySelector('input[name="take_profit_pips"]').value = row.children[7].textContent !== "—" ? parseFloat(row.children[7].textContent).toFixed(4) : "";
         document.querySelector('input[name="trailing_stop_pips"]').value = row.children[8].textContent !== "—" ? parseFloat(row.children[8].textContent).toFixed(4) : "";
+
+        // --- NEW: populate farClose radio from row's data attribute ---
+        const farCloseVal = row.dataset.farclose === 'true' ? 'true' : 'false';
+        const targetRadio = document.querySelector(`input[name="farClose"][value="${farCloseVal}"]`);
+        if(targetRadio) targetRadio.checked = true;
+
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 });

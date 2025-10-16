@@ -8,6 +8,8 @@ import datetime
 from threading import Thread, RLock
 from .trailingStopLoss import start_trailing_loop
 from threading import Thread
+from utils.closeFarOrders import remove_extra_pending_orders, run_auto_cleaner
+
 # ----------------- Config / Limits -----------------
 MAX_ORDERS_PER_SYMBOL = 60  # total pending orders per symbol
 DEFAULT_MAGIC = 123456
@@ -137,6 +139,8 @@ t = Thread(target=start_trailing_loop, kwargs={
     "mt5_lock": mt5_lock
 }, daemon=True)
 t.start()
+t2 = Thread(target=run_auto_cleaner, kwargs={"interval": 1}, daemon=True)
+t2.start()
 # ----------------- Helper caches / utilities -----------------
 def sync_pending_cache(symbol, brick_size):
     """Populate _pending_cache[symbol] with aligned pending prices from broker."""
