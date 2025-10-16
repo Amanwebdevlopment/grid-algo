@@ -8,17 +8,14 @@
     "symbols": {
         "XAUUSD.pr": {
             "lot_size": 0.01,
-            "brick_size": 1.0,
-            "max_up": 5,
-            "max_down": 5,
+            "brick_size": 5.0,
+            "max_up": 1,
+            "max_down": 1,
             "trade_side": "both",
-            "grid_rounding": "nearest",
-            "stop_loss_pips": null,
-            "take_profit_pips": 1.0,
-            "trailing_stop_pips": 3.0,
-            "initial_levels_buy": 0,
-            "initial_levels_sell": 0,
-            "active": true
+            "stop_loss_pips": 5.0,
+            "take_profit_pips": null,
+            "trailing_stop_pips": 5.0,
+            "active": false
         },
         "GBPUSD.pr": {
             "lot_size": 0.01,

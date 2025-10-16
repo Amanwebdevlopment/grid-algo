@@ -4,8 +4,7 @@
 <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="bg-white shadow-xl rounded-2xl p-8">
         <h2 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center gap-3">
-            <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" stroke-width="2"
-                 viewBox="0 0 24 24">
+            <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
             </svg>
             Manage Symbols
@@ -50,10 +49,31 @@
                     <option value="sell">Only Sell</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-sm font-semibold mb-1">SL (pips)</label>
-                <input type="number" name="stop_loss_pips" step="0.0001" value="0.1000" class="border rounded p-2 w-full">
+
+            <!-- Stop Loss with radio options -->
+            <div class="col-span-1 sm:col-span-2 lg:col-span-1">
+                <label class="block text-sm font-semibold mb-1">Stop Loss</label>
+                <div class="mb-2 text-sm">
+                    <label class="inline-flex items-center mr-3">
+                        <input type="radio" name="stop_loss_mode" value="same_price" checked class="mr-2 stoploss-mode"> Same as price (0.0)
+                    </label>
+                    <label class="inline-flex items-center mr-3">
+                        <input type="radio" name="stop_loss_mode" value="no_stop" class="mr-2 stoploss-mode"> No stop loss
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="stop_loss_mode" value="custom" class="mr-2 stoploss-mode"> My stop loss
+                    </label>
+                </div>
+
+                <!-- VISIBLE input: for user display / editing (no name so it won't be submitted) -->
+                <input id="stopLossInput" type="number" step="0.0001" min="0.0001" placeholder="Enter stop loss (> 0.0)" class="border rounded p-2 w-full" value="0.0" readonly>
+
+                <!-- HIDDEN input: this one carries the actual submitted value -->
+                <input id="stopLossHidden" type="hidden" name="stop_loss_pips" value="0.0">
+
+                <p id="stopLossHelp" class="text-xs text-gray-500 mt-1">Select mode. "Same as price" sets 0.0; "No stop loss" will send null; "My stop loss" requires &gt; 0.</p>
             </div>
+
             <div>
                 <label class="block text-sm font-semibold mb-1">TP (pips)</label>
                 <input type="number" name="take_profit_pips" step="0.0001" value="0.1000" class="border rounded p-2 w-full">
@@ -64,7 +84,7 @@
             </div>
 
             <div class="col-span-1 sm:col-span-2 lg:col-span-1 flex items-end">
-                <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full font-semibold shadow">
+                <button id="addUpdateBtn" type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded w-full font-semibold shadow">
                     ➕ Add / Update Symbol
                 </button>
             </div>
@@ -96,7 +116,7 @@
                         <td class="border px-4 py-3">{{ sym.max_up }}</td>
                         <td class="border px-4 py-3">{{ sym.max_down }}</td>
                         <td class="border px-4 py-3">{{ sym.trade_side }}</td>
-                        <td class="border px-4 py-3">{{ "%.4f"|format(sym.stop_loss_pips) if sym.stop_loss_pips else "—" }}</td>
+                        <td class="border px-4 py-3">{{ "%.4f"|format(sym.stop_loss_pips) if sym.stop_loss_pips is not none else "—" }}</td>
                         <td class="border px-4 py-3">{{ "%.4f"|format(sym.take_profit_pips) if sym.take_profit_pips else "—" }}</td>
                         <td class="border px-4 py-3">{{ "%.4f"|format(sym.trailing_stop_pips) if sym.trailing_stop_pips else "—" }}</td>
                         <td class="border px-4 py-3 text-center">
@@ -170,9 +190,100 @@ items.forEach(item => item.addEventListener('mousedown', e => {
     dropdown.classList.add('hidden');
 }));
 
-// --- Edit Button ---
+// --- Utility to set disabled look ---
+function setDisabledButton(btn, disabled) {
+    if(!btn) return;
+    btn.disabled = disabled;
+    if(disabled) {
+        btn.classList.add("opacity-50", "cursor-not-allowed");
+    } else {
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+}
+
+// --- Elements for SL handling ---
+const stopLossRadios = document.querySelectorAll('.stoploss-mode');
+const stopLossInput = document.getElementById('stopLossInput'); // VISIBLE - no name
+const stopLossHidden = document.getElementById('stopLossHidden'); // HIDDEN - has name
+
+// Update UI and hidden value based on mode
+function updateStopLossUI() {
+    const selected = document.querySelector('input[name="stop_loss_mode"]:checked').value;
+    if(selected === 'same_price') {
+        stopLossInput.value = "0.0";
+        stopLossInput.readOnly = true;
+        stopLossHidden.value = "0.0";
+    } else if(selected === 'no_stop') {
+        stopLossInput.value = "";
+        stopLossInput.readOnly = true;
+        stopLossHidden.value = ""; // backend will treat empty as None
+    } else { // custom
+        // enable editing
+        stopLossInput.readOnly = false;
+        // if hidden already has a >0 value keep it, else clear visible for user
+        if(stopLossHidden.value && parseFloat(stopLossHidden.value) > 0) {
+            stopLossInput.value = parseFloat(stopLossHidden.value).toFixed(4);
+        } else {
+            stopLossInput.value = "";
+            stopLossHidden.value = "";
+        }
+    }
+}
+
+// when visible custom input changes, update hidden value
+stopLossInput.addEventListener('input', () => {
+    const v = stopLossInput.value.trim();
+    // keep hidden synced (will be validated on submit)
+    stopLossHidden.value = v;
+});
+
+stopLossRadios.forEach(r => r.addEventListener('change', updateStopLossUI));
+
+// --- Initialize on load (fixes refresh issue) ---
+document.addEventListener('DOMContentLoaded', () => {
+    // init buttons state
+    document.querySelectorAll('tr.hover\\:bg-gray-50').forEach(row => {
+        const toggleBtn = row.querySelector('.toggle-trading-btn');
+        const panicBtn = row.querySelector('.panic-close-btn');
+        const cancelBtn = row.querySelector('.cancel-orders-btn');
+        const editBtn = row.querySelector('.edit-symbol-btn');
+
+        const isActive = toggleBtn && (toggleBtn.classList.contains('bg-green-500') || toggleBtn.textContent.includes('🟢'));
+        setDisabledButton(panicBtn, !!isActive);
+        setDisabledButton(cancelBtn, !!isActive);
+        setDisabledButton(editBtn, !!isActive);
+    });
+
+    // init SL UI/hidden
+    updateStopLossUI();
+});
+
+// --- Form submit validation and final hidden sync ---
+const addForm = document.getElementById('addSymbolForm');
+addForm.addEventListener('submit', (e) => {
+    const mode = document.querySelector('input[name="stop_loss_mode"]:checked').value;
+    if(mode === 'custom') {
+        const v = stopLossHidden.value.trim();
+        if(v === "" || isNaN(v) || parseFloat(v) <= 0) {
+            e.preventDefault();
+            alert("Custom Stop Loss must be a number greater than 0.0");
+            stopLossInput.focus();
+            return;
+        }
+        // ensure hidden has normalized value
+        stopLossHidden.value = parseFloat(v).toFixed(4);
+    } else if(mode === 'no_stop') {
+        // send empty so backend saves None
+        stopLossHidden.value = "";
+    } else { // same_price
+        stopLossHidden.value = "0.0";
+    }
+});
+
+// --- Edit Button (populate form, including hidden) ---
 document.querySelectorAll(".edit-symbol-btn").forEach(btn => {
     btn.addEventListener('click', () => {
+        if(btn.disabled) return;
         const row = btn.closest('tr');
         input.value = row.children[0].textContent;
         document.querySelector('input[name="lot_size"]').value = row.children[1].textContent;
@@ -180,7 +291,26 @@ document.querySelectorAll(".edit-symbol-btn").forEach(btn => {
         document.querySelector('input[name="max_up"]').value = row.children[3].textContent;
         document.querySelector('input[name="max_down"]').value = row.children[4].textContent;
         document.querySelector('select[name="trade_side"]').value = row.children[5].textContent;
-        document.querySelector('input[name="stop_loss_pips"]').value = row.children[6].textContent !== "—" ? parseFloat(row.children[6].textContent).toFixed(4) : "";
+
+        // Determine SL radio and hidden value based on displayed cell
+        const slText = row.children[6].textContent.trim();
+        if(slText === "—") {
+            document.querySelector('input[name="stop_loss_mode"][value="no_stop"]').checked = true;
+            stopLossHidden.value = "";
+        } else {
+            const slNum = parseFloat(slText);
+            if(!isNaN(slNum) && slNum === 0.0) {
+                document.querySelector('input[name="stop_loss_mode"][value="same_price"]').checked = true;
+                stopLossHidden.value = "0.0";
+            } else {
+                document.querySelector('input[name="stop_loss_mode"][value="custom"]').checked = true;
+                stopLossHidden.value = (!isNaN(slNum) ? slNum.toFixed(4) : "");
+            }
+        }
+
+        // Now update visible + readonly state from hidden
+        updateStopLossUI();
+
         document.querySelector('input[name="take_profit_pips"]').value = row.children[7].textContent !== "—" ? parseFloat(row.children[7].textContent).toFixed(4) : "";
         document.querySelector('input[name="trailing_stop_pips"]').value = row.children[8].textContent !== "—" ? parseFloat(row.children[8].textContent).toFixed(4) : "";
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -200,16 +330,67 @@ document.querySelectorAll(".toggle-trading-btn").forEach(btn => {
 
         const data = await res.json();
         if(data.success) {
+            const row = btn.closest('tr');
+            const panicBtn = row.querySelector(".panic-close-btn");
+            const cancelBtn = row.querySelector(".cancel-orders-btn");
+            const editBtn = row.querySelector(".edit-symbol-btn");
+
             if(data.active) {
                 btn.classList.remove("bg-gray-400", "hover:bg-gray-500");
                 btn.classList.add("bg-green-500", "hover:bg-green-600");
                 btn.textContent = "🟢 Active";
+
+                setDisabledButton(panicBtn, true);
+                setDisabledButton(cancelBtn, true);
+                setDisabledButton(editBtn, true);
             } else {
                 btn.classList.remove("bg-green-500", "hover:bg-green-600");
                 btn.classList.add("bg-gray-400", "hover:bg-gray-500");
                 btn.textContent = "🔴 Stopped";
+
+                setDisabledButton(panicBtn, false);
+                setDisabledButton(cancelBtn, false);
+                setDisabledButton(editBtn, false);
             }
         }
+    });
+});
+
+// --- Panic Close & Cancel Orders Buttons ---
+document.querySelectorAll(".panic-close-btn, .cancel-orders-btn").forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if(btn.disabled) return;
+
+        const symbol = btn.dataset.symbol;
+        const action = btn.classList.contains("panic-close-btn") ? "panic-close" : "close-pending";
+        const confirmMsg = action === "panic-close"
+            ? `⚠ Are you sure you want to force close all ${symbol} trades?`
+            : `⚠ Are you sure you want to cancel all pending orders for ${symbol}?`;
+
+        if(!confirm(confirmMsg)) return;
+
+        btn.disabled = true;
+        btn.textContent = "⏳ Processing...";
+
+        try {
+            const res = await fetch(`/symbols/${action}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symbol })
+            });
+
+            const data = await res.json();
+            if(data.success) {
+                alert(`✅ Successfully executed ${action} for ${symbol}`);
+            } else {
+                alert(`❌ Failed: ${data.message || "Unexpected error"}`);
+            }
+        } catch (err) {
+            alert("⚠ Error connecting to server.");
+        }
+
+        btn.disabled = false;
+        btn.textContent = action === "panic-close" ? "⚠ Panic Close" : "✖ Cancel Orders";
     });
 });
 </script>

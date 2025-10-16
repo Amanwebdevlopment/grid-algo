@@ -1,7 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, flash, jsonify
 import json
 import MetaTrader5 as mt5
+from threading import Thread
 
+# ---------------- Blueprint ----------------
 symbol_bp = Blueprint("symbol", __name__)
 CONFIG_FILE = "config.json"
 
@@ -31,7 +33,84 @@ def fetch_broker_symbols() -> list:
         print("[DEBUG] MT5 not initialized for symbols fetch")
         return []
     all_symbols = mt5.symbols_get()
+    mt5.shutdown()
     return [s.name for s in all_symbols] if all_symbols else []
+
+# ----------------- MT5 Helpers -----------------
+FILLING_MODES = [mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC]
+
+def send_order_fast(request):
+    for filling in FILLING_MODES:
+        request["type_filling"] = filling
+        result = mt5.order_send(request)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            return result
+    return result
+
+# ----------------- Close Pending Orders Only -----------------
+def close_pending_orders(symbol: str):
+    if not mt5.initialize():
+        print("[DEBUG] MT5 init failed for pending order close")
+        return
+
+    pending_orders = mt5.orders_get(symbol=symbol) or []
+
+    if not pending_orders:
+        print(f"[INFO] No pending orders found for {symbol}")
+        mt5.shutdown()
+        return
+
+    print(f"[INFO] Closing {len(pending_orders)} pending orders for {symbol}")
+
+    for order in pending_orders:
+        req = {
+            "action": mt5.TRADE_ACTION_REMOVE,
+            "order": order.ticket,
+            "symbol": symbol,
+            "magic": order.magic,
+            "comment": "Cancel Pending Order",
+        }
+        result = send_order_fast(req)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(f"✅ Canceled pending order {order.ticket}")
+        else:
+            print(f"❌ Failed to cancel pending order {order.ticket}: {result.comment}")
+
+    mt5.shutdown()
+
+# ----------------- Force Close Symbol (All Positions) -----------------
+def force_close_symbol(symbol: str):
+    if not mt5.initialize():
+        print("[DEBUG] MT5 init failed for force close")
+        return
+
+    positions = mt5.positions_get(symbol=symbol) or []
+
+    tick = mt5.symbol_info_tick(symbol)
+    if not tick:
+        print(f"[WARN] No tick data for {symbol}")
+        mt5.shutdown()
+        return
+
+    for pos in positions:
+        close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
+        req = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": pos.volume,
+            "type": close_type,
+            "position": pos.ticket,
+            "price": price,
+            "deviation": 10,
+            "magic": pos.magic,
+            "comment": "Panic Close",
+            "type_time": mt5.ORDER_TIME_GTC,
+        }
+        send_order_fast(req)
+
+    mt5.shutdown()
+    print(f"[INFO] All positions closed for {symbol}")
 
 # ----------------- Routes -----------------
 @symbol_bp.route("/symbols", methods=["GET", "POST"])
@@ -39,14 +118,12 @@ def symbols():
     config = load_config()
 
     if request.method == "POST":
-        new_symbol = request.form.get("new_symbol", "").strip()  # exact broker name
+        new_symbol = request.form.get("new_symbol", "").strip()
         remove_symbol = request.form.get("remove_symbol")
 
-        # ---------------- Remove Symbol ----------------
         if remove_symbol and remove_symbol in config["symbols"]:
             config["symbols"].pop(remove_symbol)
 
-        # ---------------- Add / Update Symbol ----------------
         if new_symbol:
             broker_symbols = fetch_broker_symbols()
             if new_symbol not in broker_symbols:
@@ -58,28 +135,10 @@ def symbols():
             max_up = int(request.form.get("max_up", 2))
             max_down = int(request.form.get("max_down", 2))
             trade_side = request.form.get("trade_side", "both")
-            grid_rounding = request.form.get("grid_rounding", "nearest")
+            stop_loss_pips = float(request.form.get("stop_loss_pips")) if request.form.get("stop_loss_pips") else None
+            take_profit_pips = float(request.form.get("take_profit_pips")) if request.form.get("take_profit_pips") else None
+            trailing_stop_pips = float(request.form.get("trailing_stop_pips")) if request.form.get("trailing_stop_pips") else None
 
-            stop_loss_pips = request.form.get("stop_loss_pips")
-            stop_loss_pips = float(stop_loss_pips) if stop_loss_pips else None
-
-            take_profit_pips = request.form.get("take_profit_pips")
-            if take_profit_pips is not None and take_profit_pips.strip() != "":
-                take_profit_pips = float(take_profit_pips)
-                if take_profit_pips == 0:
-                    take_profit_pips = None
-            else:
-                take_profit_pips = None
-
-            trailing_stop_pips = request.form.get("trailing_stop_pips")
-            trailing_stop_pips = float(trailing_stop_pips) if trailing_stop_pips else None
-
-            initial_levels_buy = int(request.form.get("initial_levels_buy", 0))
-            initial_levels_sell = int(request.form.get("initial_levels_sell", 0))
-
-            config.setdefault("symbols", {})
-
-            # Preserve previous active state if symbol exists
             prev_active = config["symbols"].get(new_symbol, {}).get("active", False)
 
             config["symbols"][new_symbol] = {
@@ -88,19 +147,15 @@ def symbols():
                 "max_up": max_up,
                 "max_down": max_down,
                 "trade_side": trade_side,
-                "grid_rounding": grid_rounding,
                 "stop_loss_pips": stop_loss_pips,
                 "take_profit_pips": take_profit_pips,
-                "trailing_stop_pips": trailing_stop_pips,  # ✅ Add trailing stop loss here
-                "initial_levels_buy": initial_levels_buy,
-                "initial_levels_sell": initial_levels_sell,
+                "trailing_stop_pips": trailing_stop_pips,
                 "active": True if new_symbol not in config["symbols"] else prev_active
             }
 
         save_config(config)
         return redirect("/symbols")
 
-    # ---------------- GET Request ----------------
     symbols_list = [{"name": k, **v} for k, v in config.get("symbols", {}).items()]
     broker_symbols = fetch_broker_symbols()
     return render_template("symbols.html", symbols=symbols_list, broker_symbols=broker_symbols)
@@ -111,11 +166,36 @@ def toggle_symbol():
     config = load_config()
     data = request.get_json()
     symbol = data.get("symbol")
-
     if symbol and symbol in config.get("symbols", {}):
         config["symbols"][symbol]["active"] = not config["symbols"][symbol].get("active", False)
         save_config(config)
         return jsonify({"success": True, "active": config["symbols"][symbol]["active"]})
-
     return jsonify({"success": False, "message": "Symbol not found"}), 404
-    
+
+# ----------------- Close Pending Orders Route -----------------
+@symbol_bp.route("/symbols/close-pending", methods=["POST"])
+def close_pending_route():
+    data = request.get_json()
+    symbol = data.get("symbol")
+    if not symbol:
+        return jsonify({"success": False, "message": "No symbol provided"}), 400
+
+    try:
+        Thread(target=close_pending_orders, args=(symbol,), daemon=True).start()
+        return jsonify({"success": True, "message": f"Pending orders close started for {symbol}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+# ----------------- Panic Close Route -----------------
+@symbol_bp.route("/symbols/panic-close", methods=["POST"])
+def panic_close_route():
+    data = request.get_json()
+    symbol = data.get("symbol")
+    if not symbol:
+        return jsonify({"success": False, "message": "No symbol provided"}), 400
+
+    try:
+        Thread(target=force_close_symbol, args=(symbol,), daemon=True).start()
+        return jsonify({"success": True, "message": f"Force close started for {symbol}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500

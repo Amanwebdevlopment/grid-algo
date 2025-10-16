@@ -1,8 +1,11 @@
-from flask import Blueprint, render_template, redirect, url_for, jsonify, request
+from flask import Blueprint, render_template, redirect, url_for, jsonify
 import json
 import threading
 import MetaTrader5 as mt5
 import traceback
+import os
+import time
+
 from utils.utils import run_dynamic_grid      # Your actual bot
 from utils.panic_close import panic_close_all # Panic close all positions
 from utils.cancel_all import cancel_pending_grid_orders # Cancel all pending orders
@@ -16,15 +19,17 @@ status_message = None
 status_type = None
 _trading_thread = None
 _trading_lock = threading.Lock()  # Lock for thread-safe stop
+_config_lock = threading.Lock()
+_last_config_mtime = 0
 
 # ----------------- Config -----------------
 def load_config():
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
+    with _config_lock:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
 
 # ----------------- MT5 Helpers -----------------
 def ensure_mt5():
-    """Initialize MT5 if not already done."""
     if not mt5.initialize():
         print("[DEBUG] Initializing MT5...")
         if not mt5.initialize():
@@ -49,39 +54,22 @@ def fetch_pending_orders():
         return []
 
 def serialize_positions_orders():
-    """Helper to serialize positions & orders for JSON API"""
     positions_raw = fetch_positions()
     orders_raw = fetch_pending_orders()
 
-    positions = []
-    for p in positions_raw:
-        positions.append({
-            "symbol": p.symbol,
-            "type": int(p.type),          # 0=BUY, 1=SELL
-            "volume": getattr(p, "volume", 0),
-            "ticket": p.ticket,
-            "profit": round(getattr(p, "profit", 0), 2)
-        })
+    positions = [{"symbol": p.symbol, "type": int(p.type), "volume": getattr(p, "volume", 0),
+                  "ticket": p.ticket, "profit": round(getattr(p, "profit", 0), 2)} for p in positions_raw]
 
-    orders = []
-    for o in orders_raw:
-        orders.append({
-            "symbol": o.symbol,
-            "type": int(o.type),                 # 0=BUY, 1=SELL
-            "volume": getattr(o, "volume_current", 0),  # remaining volume
-            "price": getattr(o, "price_open", 0),
-            "ticket": o.ticket
-        })
+    orders = [{"symbol": o.symbol, "type": int(o.type), "volume": getattr(o, "volume_current", 0),
+               "price": getattr(o, "price_open", 0), "ticket": o.ticket} for o in orders_raw]
 
     return positions, orders
 
 # ----------------- Trading -----------------
 def trading_active_flag():
-    """Function passed to run_dynamic_grid to allow Flask stop control."""
     return trading_active
 
 def trading_wrapper(config):
-    """Wrapper to run your real bot in background."""
     global trading_active, status_message, status_type
     try:
         print("[DEBUG] Trading wrapper started")
@@ -95,16 +83,15 @@ def trading_wrapper(config):
         trading_active = False
         print("[INFO] Trading bot stopped")
 
-def start_trading_loop():
-    """Start the bot in a background thread."""
+def start_trading_loop(config=None):
     global trading_active, status_message, status_type, _trading_thread
     if trading_active:
-        status_message = "Trading is already active!"
-        status_type = "info"
-        print("[DEBUG] Start requested but already active")
+        print("[DEBUG] Trading already active, skipping start")
         return
 
-    config = load_config()
+    if config is None:
+        config = load_config()
+
     trading_active = True
     status_message = "Trading started successfully!"
     status_type = "success"
@@ -114,12 +101,9 @@ def start_trading_loop():
     print("[INFO] Trading loop started in background thread")
 
 def stop_trading_loop():
-    """Safely stop the bot immediately using a lock."""
     global trading_active, status_message, status_type
     with _trading_lock:
         if not trading_active:
-            status_message = "Trading is not active!"
-            status_type = "info"
             print("[DEBUG] Stop requested but trading not active")
             return
 
@@ -128,17 +112,37 @@ def stop_trading_loop():
         status_type = "success"
         print("[INFO] Trading stop requested immediately")
 
+# ----------------- Auto-Restart Config Watcher -----------------
+def watch_config_changes():
+    global _last_config_mtime
+    while True:
+        try:
+            mtime = os.path.getmtime(CONFIG_FILE)
+            if _last_config_mtime == 0:
+                _last_config_mtime = mtime
+
+            elif mtime != _last_config_mtime:
+                print("[INFO] Config changed, restarting trading loop")
+                _last_config_mtime = mtime
+                stop_trading_loop()
+                time.sleep(1)  # short delay to ensure thread stopped
+                start_trading_loop()
+        except Exception as e:
+            print("[ERROR] Config watcher exception:", e)
+        time.sleep(1)  # check every 1 second
+
+# Start watcher thread on module load
+threading.Thread(target=watch_config_changes, daemon=True).start()
+
 # ----------------- Routes -----------------
 @main_bp.route("/")
 def index():
     global status_message, status_type
-
     message = status_message
     message_type = status_type
     status_message = None
     status_type = None
 
-    # Ensure MT5 is ready
     if not ensure_mt5():
         positions, orders = [], []
     else:
@@ -155,26 +159,25 @@ def index():
 
 @main_bp.route("/start-trading", methods=["POST"])
 def start_trading():
-    print("[DEBUG] /start-trading route called")
+    print("[DEBUG] /start-trading called")
     start_trading_loop()
     return redirect(url_for("main.index"))
 
 @main_bp.route("/stop-trading", methods=["POST"])
 def stop_trading():
-    print("[DEBUG] /stop-trading route called")
+    print("[DEBUG] /stop-trading called")
     stop_trading_loop()
     return redirect(url_for("main.index"))
 
 @main_bp.route("/panic-close", methods=["POST"])
 def panic_close():
     global status_message, status_type
-    print("[DEBUG] /panic-close route called")
+    print("[DEBUG] /panic-close called")
     try:
         if ensure_mt5():
             panic_close_all()
             status_message = "All positions and pending orders closed successfully!"
             status_type = "success"
-            print("[INFO] Panic close executed")
         else:
             status_message = "MT5 not initialized, cannot panic close."
             status_type = "error"
@@ -188,13 +191,12 @@ def panic_close():
 @main_bp.route("/cancel-all", methods=["POST"])
 def cancel_all():
     global status_message, status_type
-    print("[DEBUG] /cancel-all route called")
+    print("[DEBUG] /cancel-all called")
     try:
         if ensure_mt5():
-            cancel_pending_grid_orders(symbols=None)  # Cancel all pending bot orders
+            cancel_pending_grid_orders(symbols=None)
             status_message = "All pending grid orders canceled successfully!"
             status_type = "success"
-            print("[INFO] Cancel all orders executed")
         else:
             status_message = "MT5 not initialized, cannot cancel orders."
             status_type = "error"
@@ -205,10 +207,8 @@ def cancel_all():
         traceback.print_exc()
     return redirect(url_for("main.index"))
 
-# ----------------- Live JSON Feed -----------------
 @main_bp.route("/live-data")
 def live_data():
-    """AJAX endpoint to fetch positions, orders & P/L without refresh"""
     if not ensure_mt5():
         return jsonify({"positions": [], "orders": [], "trading_active": trading_active})
 
