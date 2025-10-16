@@ -1,23 +1,38 @@
 {
-    "account": 96861621,
-    "password": "!6EyTkJn",
-    "server": "MetaQuotes-Demo",
+    "account": 988967,
+    "password": "Demo@123",
+    "server": "EquitiBrokerageSC-Demo",
     "loop_delay": 1,
     "closed_level_block_seconds": 300,
     "grid_tolerance": 0.0,
     "symbols": {
-        "XAUUSD": {
-            "lot_size": 0.1,
-            "brick_size": 5.0,
+        "XAUUSD.pr": {
+            "lot_size": 0.01,
+            "brick_size": 1.0,
             "max_up": 5,
             "max_down": 5,
             "trade_side": "both",
             "grid_rounding": "nearest",
-            "stop_loss_pips": 5.0,
-            "take_profit_pips": 5.0,
+            "stop_loss_pips": null,
+            "take_profit_pips": 1.0,
+            "trailing_stop_pips": 3.0,
             "initial_levels_buy": 0,
             "initial_levels_sell": 0,
             "active": true
+        },
+        "GBPUSD.pr": {
+            "lot_size": 0.01,
+            "brick_size": 0.001,
+            "max_up": 5,
+            "max_down": 5,
+            "trade_side": "both",
+            "grid_rounding": "nearest",
+            "stop_loss_pips": null,
+            "take_profit_pips": 0.001,
+            "trailing_stop_pips": 0.001,
+            "initial_levels_buy": 0,
+            "initial_levels_sell": 0,
+            "active": false
         }
     }
 }

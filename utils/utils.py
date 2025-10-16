@@ -6,7 +6,8 @@ import math
 from collections import defaultdict
 import datetime
 from threading import Thread, RLock
-
+from .trailingStopLoss import start_trailing_loop
+from threading import Thread
 # ----------------- Config / Limits -----------------
 MAX_ORDERS_PER_SYMBOL = 60  # total pending orders per symbol
 DEFAULT_MAGIC = 123456
@@ -122,17 +123,20 @@ def align_price_to_grid_symbol(symbol, price, brick_size, mode="nearest"):
 def initialize_mt5(account, password, server):
     try:
         if not mt5.initialize():
-            print(f"[ERROR] MT5 initialize failed: {mt5.last_error()}")
             return False
         if not mt5.login(account, password=password, server=server):
-            print(f"[ERROR] MT5 login failed: {mt5.last_error()}")
             return False
-        print("[INFO] MT5 connected successfully")
         return True
     except Exception as e:
-        print("[ERROR] initialize_mt5 exception:", e)
         return False
 
+# after mt5.initialize() in your main grid launcher
+t = Thread(target=start_trailing_loop, kwargs={
+    "config_path": "config.json",
+    "trading_active_flag": lambda: True,
+    "mt5_lock": mt5_lock
+}, daemon=True)
+t.start()
 # ----------------- Helper caches / utilities -----------------
 def sync_pending_cache(symbol, brick_size):
     """Populate _pending_cache[symbol] with aligned pending prices from broker."""
@@ -236,20 +240,15 @@ def safe_place_order(order_type, symbol, price, volume, brick_size, sl_pips=None
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
     prefix = f"[{timestamp}] [{symbol}]"
     try:
-        print(f"{prefix} [DEBUG] Attempting to place order: type={order_type}, price={price}, volume={volume}")
-
         # 1️⃣ Align price (pure CPU)
         price_aligned = align_price_to_grid_symbol(symbol, price, brick_size)
-        print(f"{prefix} [DEBUG] Aligned price: {price_aligned}")
 
         # 2️⃣ Closed levels
         if closed_levels and price_aligned in closed_levels:
-            print(f"{prefix} [DEBUG] Rejected: price in closed_levels")
             return False
 
         # 3️⃣ Check if level already has existing pending or open pos
         if level_has_existing_order_or_position(symbol, price_aligned, brick_size):
-            print(f"{prefix} [DEBUG] Rejected: level already has existing pending/order/position ({price_aligned})")
             return False
 
         # 4️⃣ Server-side pending check via order_exists as last confirmation
@@ -260,7 +259,6 @@ def safe_place_order(order_type, symbol, price, volume, brick_size, sl_pips=None
             exists = False
         if exists:
             _pending_cache[symbol].add(price_aligned)
-            print(f"{prefix} [DEBUG] Rejected: order_exists server-side")
             return False
 
         # 5️⃣ symbol info & tick (under lock)
@@ -281,10 +279,6 @@ def safe_place_order(order_type, symbol, price, volume, brick_size, sl_pips=None
 
         # 6️⃣ Open positions check (type-aware)  -> already covered by level_has_existing..., but keep extra guard
         open_info = get_open_positions_info(symbol, brick_size)
-        if open_info:
-            print(f"{prefix} [DEBUG] Open positions (ticket,type,raw,aligned):")
-            for oi in open_info:
-                print(f"{prefix}   -> ticket={oi['ticket']} type={oi['type']} raw={oi['raw']} aligned={oi['aligned']}")
 
         # Decide blocking: only block if an OPPOSING open position exists too-close to candidate.
         buy_constant = getattr(mt5, "ORDER_TYPE_BUY", 0)
@@ -301,13 +295,11 @@ def safe_place_order(order_type, symbol, price, volume, brick_size, sl_pips=None
             if order_type == buy_stop_const:
                 if pos_type in (sell_constant, getattr(mt5, "POSITION_TYPE_SELL", 1)):
                     if abs(price_aligned - aligned_op) < threshold:
-                        print(f"{prefix} [DEBUG] Rejected: opposing open SELL exists near {aligned_op} (thr={threshold})")
                         return False
             # If placing SELL_STOP, block only if there's an existing BUY open near the same aligned price
             if order_type == sell_stop_const:
                 if pos_type in (buy_constant, getattr(mt5, "POSITION_TYPE_BUY", 0)):
                     if abs(price_aligned - aligned_op) < threshold:
-                        print(f"{prefix} [DEBUG] Rejected: opposing open BUY exists near {aligned_op} (thr={threshold})")
                         return False
 
         # 7️⃣ Broker min distance
@@ -315,31 +307,24 @@ def safe_place_order(order_type, symbol, price, volume, brick_size, sl_pips=None
             stops_level = getattr(info, "trade_stops_level", 0) or 0
             min_dist = stops_level * (point or 1)
 
-            print(f"{prefix} [DEBUG] Tick: ask={getattr(tick,'ask',None)}, bid={getattr(tick,'bid',None)}, min_dist={min_dist}")
-
             if order_type == buy_stop_const:
                 ask_val = (tick.ask if tick and getattr(tick, 'ask', None) is not None else 0)
                 if price_aligned <= ask_val + min_dist:
-                    print(f"{prefix} [DEBUG] Rejected: BUY_STOP too close to ask+min_dist (ask={ask_val} min_dist={min_dist})")
                     return False
             if order_type == sell_stop_const:
                 bid_val = (tick.bid if tick and getattr(tick, 'bid', None) is not None else 0)
                 if price_aligned >= bid_val - min_dist:
-                    print(f"{prefix} [DEBUG] Rejected: SELL_STOP too close to bid-min_dist (bid={bid_val} min_dist={min_dist})")
                     return False
 
         # 8️⃣ Place order
         ok, msg = _place_order_and_handle_return(order_type, symbol, price_aligned, volume, sl_pips=sl_pips, tp_pips=tp_pips)
         if ok:
             _pending_cache[symbol].add(price_aligned)
-            print(f"{prefix} [INFO] Order PLACED: {symbol} @ {price_aligned}, volume={volume}")
             return True
         else:
-            print(f"{prefix} [ERROR] Order REJECTED: {symbol} @ {price_aligned}, reason: {msg}")
             return False
 
     except Exception as e:
-        print(f"{prefix} [EXCEPTION] safe_place_order exception: {e}")
         traceback.print_exc()
         return False
 
@@ -363,8 +348,6 @@ def update_grid(symbol, current_price, brick_size, lot,
         point = getattr(info, "point", 10**-digits if digits else 1e-5)
         min_dist = stops_level * (point or 1)
 
-        print(f"{prefix} [GRID] tick={getattr(tick,'ask',None)} base_price={current_price} pending_count={len(pending_prices)}")
-
         base_nearest = align_price_to_grid_symbol(symbol, current_price, brick_size, mode="nearest")
 
         # BUY_STOPs
@@ -373,33 +356,25 @@ def update_grid(symbol, current_price, brick_size, lot,
                 candidate_raw = base_nearest + i * brick_size
                 candidate = align_price_to_grid_symbol(symbol, candidate_raw, brick_size, mode="up")
 
-                print(f"{prefix} [GRID] Candidate BUY_STOP: {candidate}")
-
                 if candidate in pending_prices:
-                    print(f"{prefix} [DEBUG] BUY_STOP rejected: already pending (cache)")
                     continue
                 if closed_levels and candidate in closed_levels:
-                    print(f"{prefix} [DEBUG] BUY_STOP rejected: in closed_levels")
                     continue
 
                 # additional robust check: existing pending or positions at same level
                 if level_has_existing_order_or_position(symbol, candidate, brick_size):
-                    print(f"{prefix} [DEBUG] BUY_STOP rejected: existing pending/order/position at {candidate}")
                     continue
 
                 if tick and candidate <= tick.ask + min_dist:
-                    print(f"{prefix} [DEBUG] BUY_STOP rejected: too close to ask+min_dist")
                     continue
 
-                print(f"{prefix} [GRID] Placing BUY_STOP @ {candidate}")
                 placed = safe_place_order(getattr(mt5, "ORDER_TYPE_BUY_STOP", 2),
                                          symbol, candidate, lot, brick_size,
                                          sl_pips=sl_pips, tp_pips=tp_pips, closed_levels=closed_levels)
                 if placed:
-                    print(f"{prefix} [GRID] BUY_STOP placed @ {candidate}")
                     pending_prices.add(candidate)
                 else:
-                    print(f"{prefix} [GRID] BUY_STOP FAILED/REJECTED @ {candidate}")
+                    pass
 
         # SELL_STOPs
         if trade_side in ("sell", "both"):
@@ -407,35 +382,26 @@ def update_grid(symbol, current_price, brick_size, lot,
                 candidate_raw = base_nearest - i * brick_size
                 candidate = align_price_to_grid_symbol(symbol, candidate_raw, brick_size, mode="down")
 
-                print(f"{prefix} [GRID] Candidate SELL_STOP: {candidate}")
-
                 if candidate in pending_prices:
-                    print(f"{prefix} [DEBUG] SELL_STOP rejected: already pending (cache)")
                     continue
                 if closed_levels and candidate in closed_levels:
-                    print(f"{prefix} [DEBUG] SELL_STOP rejected: in closed_levels")
                     continue
 
                 if level_has_existing_order_or_position(symbol, candidate, brick_size):
-                    print(f"{prefix} [DEBUG] SELL_STOP rejected: existing pending/order/position at {candidate}")
                     continue
 
                 if tick and candidate >= tick.bid - min_dist:
-                    print(f"{prefix} [DEBUG] SELL_STOP rejected: too close to bid-min_dist")
                     continue
 
-                print(f"{prefix} [GRID] Placing SELL_STOP @ {candidate}")
                 placed = safe_place_order(getattr(mt5, "ORDER_TYPE_SELL_STOP", 3),
                                          symbol, candidate, lot, brick_size,
                                          sl_pips=sl_pips, tp_pips=tp_pips, closed_levels=closed_levels)
                 if placed:
-                    print(f"{prefix} [GRID] SELL_STOP placed @ {candidate}")
                     pending_prices.add(candidate)
                 else:
-                    print(f"{prefix} [GRID] SELL_STOP FAILED/REJECTED @ {candidate}")
+                    pass
 
     except Exception as e:
-        print(f"{prefix} [ERROR] update_grid exception: {e}")
         traceback.print_exc()
 
 # ----------------- Mirror-on-execution logic (unchanged but type-aware) -----------------
@@ -484,7 +450,6 @@ def handle_new_positions_and_create_mirrors(symbol, brick_size, lot, seen_ticket
                             continue
                         # Skip if any existing order/position at that level
                         if level_has_existing_order_or_position(symbol, sell_price, brick_size):
-                            print(f"{prefix} [DEBUG] Mirror SELL_STOP rejected: existing pending/order/position at {sell_price}")
                             continue
                         if sell_price in _pending_cache.get(symbol, set()):
                             continue
@@ -508,7 +473,6 @@ def handle_new_positions_and_create_mirrors(symbol, brick_size, lot, seen_ticket
                         if closed_levels and buy_price in closed_levels:
                             continue
                         if level_has_existing_order_or_position(symbol, buy_price, brick_size):
-                            print(f"{prefix} [DEBUG] Mirror BUY_STOP rejected: existing pending/order/position at {buy_price}")
                             continue
                         if buy_price in _pending_cache.get(symbol, set()):
                             continue
@@ -544,7 +508,6 @@ def handle_new_positions_and_create_mirrors(symbol, brick_size, lot, seen_ticket
         return created
 
     except Exception as e:
-        print(f"{prefix} [ERROR] handle_new_positions_and_create_mirrors exception: {e}")
         traceback.print_exc()
         return False
 
@@ -563,9 +526,7 @@ def run_symbol_loop(symbol, sym_cfg, config, seen_tickets, closed_levels, initia
     # try to make symbol available early
     ok = ensure_symbol_available(symbol, tries=3, delay=0.2)
     if not ok:
-        print(f"[WARN] [{symbol}] ensure_symbol_available failed initially — symbol may be absent from marketwatch or feed. Thread will retry.")
-
-    print(f"[INFO] [{symbol}] Worker started: lot={lot_size} brick={brick_size} side={trade_side}")
+        pass
 
     while trading_active_flag():
         try:
@@ -653,8 +614,6 @@ def run_symbol_loop(symbol, sym_cfg, config, seen_tickets, closed_levels, initia
             time.sleep(loop_delay)
 
         except Exception as e:
-            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            print(f"[{ts}] [{symbol}] [ERROR] run_symbol_loop exception: {e}")
             traceback.print_exc()
             time.sleep(1)
 
@@ -662,8 +621,6 @@ def run_symbol_loop(symbol, sym_cfg, config, seen_tickets, closed_levels, initia
 def run_dynamic_grid(config, trading_active_flag=lambda: True):
     if not initialize_mt5(config["account"], config["password"], config["server"]):
         return
-
-    print("[INFO] Starting Symmetrical Rolling Grid Bot (multi-symbol mode) ...")
 
     closed_levels = defaultdict(float)
     initial_anchors = {sym: set() for sym in config["symbols"]}
@@ -673,26 +630,23 @@ def run_dynamic_grid(config, trading_active_flag=lambda: True):
 
     for symbol, sym_cfg in config["symbols"].items():
         if not sym_cfg.get("active", True):
-            print(f"[INFO] Skipping {symbol} because active=False in config")
             continue
 
         ok = ensure_symbol_available(symbol, tries=2, delay=0.1)
         if not ok:
-            print(f"[WARN] Early check: symbol {symbol} may not be available in marketwatch/feed. Thread will still start and retry.")
+            pass
 
         t = Thread(target=run_symbol_loop, args=(symbol, sym_cfg, config, seen_position_tickets[symbol], closed_levels, initial_anchors, trading_active_flag), daemon=True)
         t.start()
         threads.append(t)
-        print(f"[INFO] Started worker thread for {symbol}")
 
     if not threads:
-        print("[ERROR] No active symbol threads started. Check your config 'symbols' and 'active' flags or broker symbol names.")
         return
 
     try:
         while trading_active_flag():
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("[INFO] Stopping manually (Ctrl+C)")
+        pass
     finally:
-        print("[INFO] Exiting run_dynamic_grid (multi-symbol mode)")
+        pass
